@@ -10,7 +10,7 @@ public:
     QColor color;
     Point3D normal; // Внешняя нормаль грани.
     QVector<Point3D> vertexNormals; // Нормали в углах грани.
-    QVector<QPointF> textureCoordinates; // UV-координаты углов грани.
+    QVector<QPointF> textureCoordinates; // UV-координаты углов грани (создаются автоматически).
 
     Polygon() = default;
     explicit Polygon(const QVector<int>& vertexIndices,

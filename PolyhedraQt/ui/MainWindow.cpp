@@ -102,7 +102,10 @@ MainWindow::MainWindow(QWidget* parent)
     auto* lightingGroup = new QGroupBox("Освещение и шейдинг");
     auto* lightingLayout = new QFormLayout(lightingGroup);
     auto* shadingBox = new QComboBox;
-    shadingBox->addItems({"Гуро (цвета вершин)", "Фонг (нормали пикселей)"});
+    shadingBox->addItems({
+        "Гуро (Ламберт)",
+        "Фонг (Toon shading)"
+    });
     auto* lightXBox = numberBox(4.0, -20.0, 20.0);
     auto* lightYBox = numberBox(5.0, -20.0, 20.0);
     auto* lightZBox = numberBox(6.0, -20.0, 20.0);
@@ -276,7 +279,8 @@ MainWindow::MainWindow(QWidget* parent)
     connect(shadingBox, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
             [this](int index) {
                 view->setShadingMode(index == 0
-                    ? PolyhedronWidget::Gouraud : PolyhedronWidget::Phong);
+                    ? PolyhedronWidget::GouraudLambert
+                    : PolyhedronWidget::PhongToon);
             });
     const auto updateLight = [this, lightXBox, lightYBox, lightZBox]() {
         view->setLightPosition(Point3D(lightXBox->value(), lightYBox->value(), lightZBox->value()));

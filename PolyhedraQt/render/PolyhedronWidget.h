@@ -3,6 +3,7 @@
 #include <QWidget>
 #include <QImage>
 #include <QColor>
+
 #include "../geometry/Polyhedron.h"
 #include "../math/Projection.h"
 #include "Camera.h"
@@ -10,9 +11,13 @@
 class PolyhedronWidget : public QWidget {
     Q_OBJECT
 public:
-    enum ShadingMode { Gouraud, Phong };
+    enum ShadingMode {
+        GouraudLambert,
+        PhongToon
+    };
 
     explicit PolyhedronWidget(QWidget* parent = nullptr);
+
     void setPolyhedron(const Polyhedron& p);
     void setProjectionType(ProjectionType type);
     void setBackFaceCulling(bool enabled);
@@ -33,7 +38,7 @@ private:
     bool cullingEnabled = true;
     bool zBufferEnabled = true;
     bool textureEnabled = false;
-    ShadingMode shadingMode = Gouraud;
+    ShadingMode shadingMode = GouraudLambert;
     double cameraYaw = 35.0;
     double cameraPitch = 22.0;
     double cameraDistance = 8.0;

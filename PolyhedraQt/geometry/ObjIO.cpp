@@ -13,7 +13,6 @@ bool ObjIO::load(const QString& fileName, Polyhedron& model, QString* error)
     }
 
     Polyhedron result;
-    QVector<QPointF> textureVertices;
     QTextStream in(&file);
     int lineNumber = 0;
 
@@ -41,20 +40,8 @@ bool ObjIO::load(const QString& fileName, Polyhedron& model, QString* error)
                 return false;
             }
             result.vertices.append(Point3D(x, y, z));
-        } else if (parts[0] == "vt" && parts.size() >= 3) {
-            bool okU = false;
-            bool okV = false;
-            const double u = parts[1].toDouble(&okU);
-            const double v = parts[2].toDouble(&okV);
-            if (!okU || !okV) {
-                if (error) *error = QString("Некорректная текстурная координата в строке %1").arg(lineNumber);
-                return false;
-            }
-            textureVertices.append(QPointF(u, v));
         } else if (parts[0] == "f" && parts.size() >= 4) {
             QVector<int> indices;
-            QVector<QPointF> faceUvs;
-            bool hasTextureCoordinates = true;
 
             for (int i = 1; i < parts.size(); ++i) {
                 const QStringList fields = parts[i].split('/');
@@ -70,30 +57,9 @@ bool ObjIO::load(const QString& fileName, Polyhedron& model, QString* error)
                     return false;
                 }
                 indices.append(vertexIndex);
-
-                if (fields.size() > 1 && !fields[1].isEmpty()) {
-                    bool okTexture = false;
-                    int textureIndex = fields[1].toInt(&okTexture);
-                    if (!okTexture || textureIndex == 0) {
-                        if (error) *error = QString("Некорректный индекс текстуры в строке %1").arg(lineNumber);
-                        return false;
-                    }
-                    textureIndex = textureIndex > 0 ? textureIndex - 1 : textureVertices.size() + textureIndex;
-                    if (textureIndex < 0 || textureIndex >= textureVertices.size()) {
-                        if (error) *error = QString("Индекс текстуры вне диапазона в строке %1").arg(lineNumber);
-                        return false;
-                    }
-                    faceUvs.append(textureVertices[textureIndex]);
-                } else {
-                    hasTextureCoordinates = false;
-                }
             }
 
-            Polygon face(indices);
-            if (hasTextureCoordinates && faceUvs.size() == indices.size()) {
-                face.textureCoordinates = faceUvs;
-            }
-            result.faces.append(face);
+            result.faces.append(Polygon(indices));
         }
     }
 
@@ -124,31 +90,14 @@ bool ObjIO::save(const QString& fileName, const Polyhedron& model, QString* erro
         out << "v " << point.x << ' ' << point.y << ' ' << point.z << '\n';
     }
 
-    // UV-координаты записываются отдельно для каждого угла грани.
-    int textureIndex = 1;
-    for (const Polygon& face : model.faces) {
-        if (face.textureCoordinates.size() != face.indices.size()) {
-            continue;
-        }
-        for (const QPointF& uv : face.textureCoordinates) {
-            out << "vt " << uv.x() << ' ' << uv.y() << '\n';
-        }
-    }
-
-    textureIndex = 1;
+    // Сохраняем только геометрию: координаты вершин и состав граней.
     for (const Polygon& face : model.faces) {
         if (face.indices.size() < 3) {
             continue;
         }
-        const bool hasUvs = face.textureCoordinates.size() == face.indices.size();
         out << "f";
-        for (int corner = 0; corner < face.indices.size(); ++corner) {
-            const int vertexIndex = face.indices[corner] + 1;
-            if (hasUvs) {
-                out << ' ' << vertexIndex << '/' << textureIndex++;
-            } else {
-                out << ' ' << vertexIndex;
-            }
+        for (int vertexIndex : face.indices) {
+            out << ' ' << vertexIndex + 1;
         }
         out << '\n';
     }

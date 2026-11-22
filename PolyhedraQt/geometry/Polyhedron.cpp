@@ -174,7 +174,7 @@ void Polyhedron::calculateNormals()
         }
         face.normal = normal;
 
-        // Если OBJ не предоставил vt, создаём плоские UV-координаты для каждой грани.
+        // Создаём простые UV-координаты для каждой грани проекцией на две оси.
         if (face.textureCoordinates.size() != face.indices.size()) {
             const double nx = std::abs(normal.x);
             const double ny = std::abs(normal.y);
@@ -214,25 +214,36 @@ void Polyhedron::calculateNormals()
 
 void Polyhedron::calculateVertexNormals()
 {
-    QVector<Point3D> sums(vertices.size());
-    for (const Polygon& face : faces) {
-        for (int index : face.indices) {
-            if (index >= 0 && index < sums.size()) {
-                sums[index].x += face.normal.x;
-                sums[index].y += face.normal.y;
-                sums[index].z += face.normal.z;
-            }
-        }
-    }
+    // Нормаль каждого угла грани вычисляется как среднее нормалей тех
+    // граней, которые имеют с ним общую вершину и образуют гладкий стык.
+    // На резких рёбрах усреднения нет: сохраняется нормаль текущей грани.
+    const double smoothCosine = 0.95;
 
-    for (Polygon& face : faces) {
-        face.vertexNormals.clear();
-        for (int index : face.indices) {
-            if (index >= 0 && index < sums.size()) {
-                face.vertexNormals.append(normalized(sums[index]));
-            } else {
-                face.vertexNormals.append(face.normal);
+    for (Polygon& currentFace : faces) {
+        currentFace.vertexNormals.clear();
+        for (int vertexIndex : currentFace.indices) {
+            if (vertexIndex < 0 || vertexIndex >= vertices.size()) {
+                currentFace.vertexNormals.append(currentFace.normal);
+                continue;
             }
+
+            Point3D sum;
+            for (const Polygon& adjacentFace : faces) {
+                if (!adjacentFace.indices.contains(vertexIndex)) {
+                    continue;
+                }
+                const double cosine = dot(currentFace.normal, adjacentFace.normal);
+                if (cosine >= smoothCosine) {
+                    sum.x += adjacentFace.normal.x;
+                    sum.y += adjacentFace.normal.y;
+                    sum.z += adjacentFace.normal.z;
+                }
+            }
+
+            const Point3D cornerNormal = normalized(sum);
+            currentFace.vertexNormals.append(
+                std::sqrt(dot(cornerNormal, cornerNormal)) > 1e-12
+                    ? cornerNormal : currentFace.normal);
         }
     }
 }
