@@ -2,7 +2,6 @@
 
 #include <cmath>
 #include <algorithm>
-#include <QPointF>
 
 namespace {
 Point3D cross(const Point3D& a, const Point3D& b)
@@ -174,40 +173,6 @@ void Polyhedron::calculateNormals()
         }
         face.normal = normal;
 
-        // Создаём простые UV-координаты для каждой грани проекцией на две оси.
-        if (face.textureCoordinates.size() != face.indices.size()) {
-            const double nx = std::abs(normal.x);
-            const double ny = std::abs(normal.y);
-            const double nz = std::abs(normal.z);
-            const int dominantAxis = nx >= ny && nx >= nz ? 0 : (ny >= nz ? 1 : 2);
-            double minA = 1e100;
-            double maxA = -1e100;
-            double minB = 1e100;
-            double maxB = -1e100;
-            for (int index : face.indices) {
-                if (index < 0 || index >= vertices.size()) continue;
-                const Point3D& point = vertices[index];
-                const double a = dominantAxis == 0 ? point.y : point.x;
-                const double b = dominantAxis == 2 ? point.y : point.z;
-                minA = std::min(minA, a);
-                maxA = std::max(maxA, a);
-                minB = std::min(minB, b);
-                maxB = std::max(maxB, b);
-            }
-            face.textureCoordinates.clear();
-            for (int index : face.indices) {
-                if (index < 0 || index >= vertices.size()) {
-                    face.textureCoordinates.append(QPointF());
-                    continue;
-                }
-                const Point3D& point = vertices[index];
-                const double a = dominantAxis == 0 ? point.y : point.x;
-                const double b = dominantAxis == 2 ? point.y : point.z;
-                const double u = maxA > minA ? (a - minA) / (maxA - minA) : 0.0;
-                const double v = maxB > minB ? (b - minB) / (maxB - minB) : 0.0;
-                face.textureCoordinates.append(QPointF(u, v));
-            }
-        }
     }
     calculateVertexNormals();
 }

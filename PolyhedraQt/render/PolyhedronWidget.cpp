@@ -46,7 +46,6 @@ struct Vertex {
 struct Corner {
     const Vertex* vertex = nullptr;
     V3 normal;
-    QPointF uv;
     QColor gouraudColor;
 };
 
@@ -94,21 +93,51 @@ QColor toonDiffuseColor(const QColor& material, V3 normal, V3 lightDirection)
     return scaleColor(material, 1.3);
 }
 
-QColor sampleTextureNearest(const QImage& image, const QPointF& uv)
+QColor sampleTextureNearest(const QImage& image, double u, double v)
 {
-    if (image.isNull()) {
-        return Qt::white;
-    }
-
-    // Повторяем текстуру за пределами диапазона [0, 1].
-    const double u = uv.x() - std::floor(uv.x());
-    const double v = uv.y() - std::floor(uv.y());
-
-    // Берём один ближайший пиксель изображения.
-    const int x = qBound(0, static_cast<int>(u * image.width()), image.width() - 1);
-    const int y = qBound(0, static_cast<int>((1.0 - v) * image.height()),
+    if (image.isNull()) return Qt::white;
+    u = qBound(0.0, u, 1.0);
+    v = qBound(0.0, v, 1.0);
+    const int x = qBound(0, static_cast<int>(std::round(u * (image.width() - 1))),
+                         image.width() - 1);
+    const int y = qBound(0, static_cast<int>(std::round((1.0 - v) * (image.height() - 1))),
                          image.height() - 1);
     return image.pixelColor(x, y);
+}
+
+// Параллельная проекция: p = a + u*e1 + v*e2.
+bool parallelTextureCoordinates(const V3& p, const V3& a,
+                                const V3& e1, const V3& e2,
+                                double& u, double& v)
+{
+    const V3 d = sub(p, a);
+    const double e1e1 = dot(e1, e1);
+    const double e1e2 = dot(e1, e2);
+    const double e2e2 = dot(e2, e2);
+    const double de1 = dot(d, e1);
+    const double de2 = dot(d, e2);
+    const double determinant = e1e1 * e2e2 - e1e2 * e1e2;
+    if (std::abs(determinant) < 1e-12) return false;
+    u = (de1 * e2e2 - de2 * e1e2) / determinant;
+    v = (de2 * e1e1 - de1 * e1e2) / determinant;
+    return true;
+}
+
+// Перспективная проекция: формулы слайда и правило Крамера.
+bool perspectiveTextureCoordinates(double X, double Y,
+                                   const V3& a, const V3& e1, const V3& e2,
+                                   double& u, double& v)
+{
+    const V3 n = cross(e1, e2);
+    const V3 m = cross(e2, a);
+    const V3 l = cross(a, e1);
+    const double delta = X * n.x + Y * n.y + n.z;
+    if (std::abs(delta) < 1e-12) return false;
+    const double deltaU = X * m.x + Y * m.y + m.z;
+    const double deltaV = X * l.x + Y * l.y + l.z;
+    u = deltaU / delta;
+    v = deltaV / delta;
+    return true;
 }
 }
 
@@ -131,9 +160,7 @@ void PolyhedronWidget::setPolyhedron(const Polyhedron& p)
         const Point3D& normal = firstFace.normal;
         const bool normalsMissing = std::abs(normal.x) + std::abs(normal.y)
                                   + std::abs(normal.z) < 1e-12;
-        const bool uvMissing = firstFace.textureCoordinates.size()
-                            != firstFace.indices.size();
-        if (normalsMissing || uvMissing) {
+        if (normalsMissing) {
             polyhedron.calculateNormals();
         } else {
             polyhedron.calculateVertexNormals();
@@ -283,11 +310,6 @@ void PolyhedronWidget::paintEvent(QPaintEvent*)
                 continue;
             }
 
-            if (face.textureCoordinates.size() != face.indices.size()) {
-                continue;
-            }
-            const QVector<QPointF>& faceUvs = face.textureCoordinates;
-
             QVector<Corner> corners;
             corners.reserve(face.indices.size());
             for (int cornerIndex = 0; cornerIndex < face.indices.size(); ++cornerIndex) {
@@ -296,11 +318,18 @@ void PolyhedronWidget::paintEvent(QPaintEvent*)
                 corner.vertex = &vertices[vertexIndex];
                 corner.normal = cornerIndex < face.vertexNormals.size()
                     ? toV3(face.vertexNormals[cornerIndex]) : faceNormal;
-                corner.uv = faceUvs[cornerIndex];
                 const V3 lightDirection = normalized(sub(toV3(lightPosition), corner.vertex->world));
                 corner.gouraudColor = lambertColor(objectColor, corner.normal, lightDirection);
                 corners.append(corner);
             }
+
+            // Базис грани по презентации: a=P1, e1=P2-P1, e2=P4-P1.
+            // Для треугольной грани вместо P4 берётся P3.
+            const V3 textureA = vertices[face.indices[0]].camera;
+            const V3 textureE1 = sub(vertices[face.indices[1]].camera, textureA);
+            const int textureVIndex = face.indices.size() >= 4 ? face.indices[3]
+                                                               : face.indices[2];
+            const V3 textureE2 = sub(vertices[textureVIndex].camera, textureA);
 
             // Невыпуклые грани требуют отдельной триангуляции; для граней
             // правильных многогранников используется веер, как в исходном проекте.
@@ -390,12 +419,26 @@ void PolyhedronWidget::paintEvent(QPaintEvent*)
                                      + triangle[1].gouraudColor.blue() * wb
                                      + triangle[2].gouraudColor.blue() * wc));
 
-                        // UV интерполируются по трём вершинам треугольника.
-                        const QPointF uv(
-                            triangle[0].uv.x() * wa + triangle[1].uv.x() * wb
-                                + triangle[2].uv.x() * wc,
-                            triangle[0].uv.y() * wa + triangle[1].uv.y() * wb
-                                + triangle[2].uv.y() * wc);
+                        const V3 cameraPositionAtPixel = add(
+                            add(mul(triangle[0].vertex->camera, wa),
+                                mul(triangle[1].vertex->camera, wb)),
+                            mul(triangle[2].vertex->camera, wc));
+
+                        double textureU = 0.0;
+                        double textureV = 0.0;
+                        bool textureCoordinatesValid = true;
+                        if (projectionType == ProjectionType::Perspective) {
+                            // X=x/z, Y=y/z для текущего экранного пикселя.
+                            const double X = (px - renderWidth / 2.0) / focal;
+                            const double Y = (renderHeight / 2.0 - py) / focal;
+                            textureCoordinatesValid = perspectiveTextureCoordinates(
+                                X, Y, textureA, textureE1, textureE2,
+                                textureU, textureV);
+                        } else {
+                            textureCoordinatesValid = parallelTextureCoordinates(
+                                cameraPositionAtPixel, textureA, textureE1, textureE2,
+                                textureU, textureV);
+                        }
 
                         QColor litColor;
                         const V3 lightDirection = normalized(sub(toV3(lightPosition), worldPosition));
@@ -407,9 +450,11 @@ void PolyhedronWidget::paintEvent(QPaintEvent*)
                         }
 
                         // Получаем цвет одного ближайшего пикселя текстуры.
-                        if (textureEnabled && !textureImage.isNull()) {
-                            litColor = multiplyColors(litColor,
-                                                      sampleTextureNearest(textureImage, uv));
+                        if (textureEnabled && !textureImage.isNull()
+                            && textureCoordinatesValid) {
+                            litColor = multiplyColors(
+                                litColor,
+                                sampleTextureNearest(textureImage, textureU, textureV));
                         }
 
                         if (zBufferEnabled) {
