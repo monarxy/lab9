@@ -12,8 +12,7 @@ Point3D rotateAroundAxis(const Point3D& p, int axis, double angle)
 }
 }
 
-bool ModelGenerators::revolution(const QVector<Point3D>& profile, int axis, int segments,
-                                 Polyhedron& result, QString* error)
+bool ModelGenerators::revolution(const QVector<Point3D>& profile, int axis, int segments, Polyhedron& result, QString* error)
 {
     if (profile.size() < 2 || segments < 3 || axis < 0 || axis > 2) {
         if (error) *error = "Нужно минимум две точки образующей и не менее трёх разбиений.";
@@ -40,8 +39,7 @@ bool ModelGenerators::revolution(const QVector<Point3D>& profile, int axis, int 
     return true;
 }
 
-bool ModelGenerators::surface(int functionIndex, double minValue, double maxValue,
-                              int divisions, Polyhedron& result, QString* error)
+bool ModelGenerators::surface(int functionIndex, double minValue, double maxValue, int divisions, Polyhedron& result, QString* error)
 {
     if (divisions < 2 || maxValue <= minValue || functionIndex < 0 || functionIndex > 3) {
         if (error) *error = "Проверьте диапазон и количество разбиений (не менее двух).";

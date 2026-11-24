@@ -2,7 +2,6 @@
 #include "../geometry/Point3D.h"
 #include "../math/Matrix4.h"
 
-// Камера хранит положение, направление взгляда и матрицу перспективной проекции.
 class Camera {
 public:
     Point3D position;

@@ -6,8 +6,5 @@ struct Point3D {
     double z = 0.0;
 
     Point3D() = default;
-    Point3D(double xValue, double yValue, double zValue)
-        : x(xValue), y(yValue), z(zValue)
-    {
-    }
+    Point3D(double xValue, double yValue, double zValue): x(xValue), y(yValue), z(zValue) { }
 };

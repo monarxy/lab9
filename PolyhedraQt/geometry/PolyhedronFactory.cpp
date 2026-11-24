@@ -79,7 +79,6 @@ Polyhedron createDodecahedron()
     Polyhedron polyhedron;
     const Polyhedron icosahedron = createIcosahedron();
 
-    // Each vertex of the dual dodecahedron is the center of an icosahedron face.
     for (const Polygon& face : icosahedron.faces) {
         Point3D center;
         for (int vertexIndex : face.indices) {
@@ -107,8 +106,7 @@ Polyhedron createDodecahedron()
         }
 
         const Point3D center = icosahedron.vertices[vertexIndex];
-        const double normalLength = std::sqrt(
-            center.x * center.x + center.y * center.y + center.z * center.z);
+        const double normalLength = std::sqrt(center.x * center.x + center.y * center.y + center.z * center.z);
         const Point3D normal(center.x / normalLength,
                              center.y / normalLength,
                              center.z / normalLength);
@@ -141,9 +139,7 @@ Polyhedron createDodecahedron()
         };
 
         std::sort(surroundingFaces.begin(), surroundingFaces.end(),
-                  [&](int a, int b) {
-                      return angleAroundVertex(a) < angleAroundVertex(b);
-                  });
+                  [&](int a, int b) { return angleAroundVertex(a) < angleAroundVertex(b); });
 
         polyhedron.faces.append(Polygon(surroundingFaces, faceColor(faceIndex++)));
     }

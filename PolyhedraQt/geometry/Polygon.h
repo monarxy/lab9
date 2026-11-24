@@ -7,11 +7,9 @@ class Polygon {
 public:
     QVector<int> indices;
     QColor color;
-    Point3D normal; // Внешняя нормаль грани.
-    QVector<Point3D> vertexNormals; // Нормали в углах грани.
+    Point3D normal;
+    QVector<Point3D> vertexNormals;
 
     Polygon() = default;
-    explicit Polygon(const QVector<int>& vertexIndices,
-                     const QColor& faceColor = QColor(95, 160, 210))
-        : indices(vertexIndices), color(faceColor) {}
+    explicit Polygon(const QVector<int>& vertexIndices, const QColor& faceColor = QColor(95, 160, 210)): indices(vertexIndices), color(faceColor) {}
 };

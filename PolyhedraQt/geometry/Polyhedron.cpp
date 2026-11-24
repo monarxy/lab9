@@ -32,7 +32,6 @@ Point3D normalized(const Point3D& value)
 
 bool transformNormal(const Matrix4& matrix, const Point3D& normal, Point3D& result)
 {
-    // Для нормалей используется строго обратная транспонированная матрица M^-T.
     const double a = matrix.m[0][0];
     const double b = matrix.m[0][1];
     const double c = matrix.m[0][2];
@@ -43,14 +42,11 @@ bool transformNormal(const Matrix4& matrix, const Point3D& normal, Point3D& resu
     const double h = matrix.m[2][1];
     const double i = matrix.m[2][2];
 
-    const double determinant = a * (e * i - f * h)
-                             - b * (d * i - f * g)
-                             + c * (d * h - e * g);
+    const double determinant = a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
     if (std::abs(determinant) < 1e-12) {
         return false;
     }
 
-    // Cofactor matrix / determinant = (A^-1)^T.
     const double invT[3][3] = {
         {(e * i - f * h) / determinant, (f * g - d * i) / determinant, (d * h - e * g) / determinant},
         {(c * h - b * i) / determinant, (a * i - c * g) / determinant, (b * g - a * h) / determinant},
@@ -68,12 +64,10 @@ bool transformNormal(const Matrix4& matrix, const Point3D& normal, Point3D& resu
 
 void Polyhedron::applyMatrix(const Matrix4& matrix)
 {
-    // До преобразования гарантируем наличие исходных нормалей.
     if (faces.isEmpty()) {
         return;
     }
-    if (faces.first().normal.x == 0.0 && faces.first().normal.y == 0.0
-        && faces.first().normal.z == 0.0) {
+    if (faces.first().normal.x == 0.0 && faces.first().normal.y == 0.0 && faces.first().normal.z == 0.0) {
         calculateNormals();
     }
 
@@ -128,8 +122,7 @@ void Polyhedron::normalizeSize(double targetRadius)
 
     if (maxRadius > 1e-9) {
         const double scale = targetRadius / maxRadius;
-        applyMatrix(Matrix4::translation(-centerPoint.x, -centerPoint.y, -centerPoint.z)
-                    * Matrix4::scaling(scale, scale, scale));
+        applyMatrix(Matrix4::translation(-centerPoint.x, -centerPoint.y, -centerPoint.z) * Matrix4::scaling(scale, scale, scale));
     }
 }
 
@@ -146,8 +139,7 @@ void Polyhedron::calculateNormals()
         const int i0 = face.indices[0];
         const int i1 = face.indices[1];
         const int i2 = face.indices[2];
-        if (i0 < 0 || i1 < 0 || i2 < 0
-            || i0 >= vertices.size() || i1 >= vertices.size() || i2 >= vertices.size()) {
+        if (i0 < 0 || i1 < 0 || i2 < 0 || i0 >= vertices.size() || i1 >= vertices.size() || i2 >= vertices.size()) {
             continue;
         }
 
@@ -179,9 +171,6 @@ void Polyhedron::calculateNormals()
 
 void Polyhedron::calculateVertexNormals()
 {
-    // Нормаль каждого угла грани вычисляется как среднее нормалей тех
-    // граней, которые имеют с ним общую вершину и образуют гладкий стык.
-    // На резких рёбрах усреднения нет: сохраняется нормаль текущей грани.
     const double smoothCosine = 0.95;
 
     for (Polygon& currentFace : faces) {
@@ -206,9 +195,7 @@ void Polyhedron::calculateVertexNormals()
             }
 
             const Point3D cornerNormal = normalized(sum);
-            currentFace.vertexNormals.append(
-                std::sqrt(dot(cornerNormal, cornerNormal)) > 1e-12
-                    ? cornerNormal : currentFace.normal);
+            currentFace.vertexNormals.append(std::sqrt(dot(cornerNormal, cornerNormal)) > 1e-12 ? cornerNormal : currentFace.normal);
         }
     }
 }

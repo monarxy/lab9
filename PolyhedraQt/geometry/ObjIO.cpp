@@ -90,7 +90,6 @@ bool ObjIO::save(const QString& fileName, const Polyhedron& model, QString* erro
         out << "v " << point.x << ' ' << point.y << ' ' << point.z << '\n';
     }
 
-    // Сохраняем только геометрию: координаты вершин и состав граней.
     for (const Polygon& face : model.faces) {
         if (face.indices.size() < 3) {
             continue;
