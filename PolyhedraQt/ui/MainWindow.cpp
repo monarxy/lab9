@@ -71,6 +71,7 @@ MainWindow::MainWindow(QWidget* parent): QMainWindow(parent),
         shapeBox->addItem(PolyhedronFactory::name(
             static_cast<PolyhedronFactory::Type>(i)));
     }
+    shapeBox->setCurrentIndex(1);
 
     auto* shapeGroup = new QGroupBox("Модель");
     auto* shapeLayout = new QFormLayout(shapeGroup);
@@ -82,6 +83,7 @@ MainWindow::MainWindow(QWidget* parent): QMainWindow(parent),
 
     projectionBox = new QComboBox;
     projectionBox->addItems({"Аксонометрическая", "Перспективная"});
+    projectionBox->setCurrentIndex(1);
 
     auto* projectionGroup = new QGroupBox("Проекция");
     auto* projectionLayout = new QFormLayout(projectionGroup);
