@@ -129,6 +129,65 @@ bool perspectiveTextureCoordinates(double X, double Y, const V3& a, const V3& e1
     v = deltaV / delta;
     return true;
 }
+
+bool bilinearCoordinates(const QPointF& point,
+                        const QPointF& p0, const QPointF& p1,
+                        const QPointF& p2, const QPointF& p3,
+                        double& u, double& v)
+{
+    u = 0.5;
+    v = 0.5;
+
+    for (int iteration = 0; iteration < 20; ++iteration) {
+        const double w0 = (1.0 - u) * (1.0 - v);
+        const double w1 = u * (1.0 - v);
+        const double w2 = u * v;
+        const double w3 = (1.0 - u) * v;
+
+        const QPointF current(
+            w0 * p0.x() + w1 * p1.x() + w2 * p2.x() + w3 * p3.x(),
+            w0 * p0.y() + w1 * p1.y() + w2 * p2.y() + w3 * p3.y());
+
+        const QPointF error = current - point;
+
+        const QPointF du(
+            (1.0 - v) * (p1.x() - p0.x()) + v * (p2.x() - p3.x()),
+            (1.0 - v) * (p1.y() - p0.y()) + v * (p2.y() - p3.y()));
+
+        const QPointF dv(
+            (1.0 - u) * (p3.x() - p0.x()) + u * (p2.x() - p1.x()),
+            (1.0 - u) * (p3.y() - p0.y()) + u * (p2.y() - p1.y()));
+
+        const double determinant = du.x() * dv.y() - dv.x() * du.y();
+        if (std::abs(determinant) < 1e-12) {
+            return false;
+        }
+
+        const double deltaU =
+            (error.x() * dv.y() - error.y() * dv.x()) / determinant;
+        const double deltaV =
+            (du.x() * error.y() - du.y() * error.x()) / determinant;
+
+        u -= deltaU;
+        v -= deltaV;
+
+        if (std::abs(deltaU) + std::abs(deltaV) < 1e-9) {
+            break;
+        }
+    }
+
+    return u >= -1e-6 && u <= 1.0 + 1e-6
+        && v >= -1e-6 && v <= 1.0 + 1e-6;
+}
+
+void bilinearWeights(double u, double v, double weights[4])
+{
+    weights[0] = (1.0 - u) * (1.0 - v);
+    weights[1] = u * (1.0 - v);
+    weights[2] = u * v;
+    weights[3] = (1.0 - u) * v;
+}
+
 }
 
 PolyhedronWidget::PolyhedronWidget(QWidget* parent): QWidget(parent)
@@ -313,91 +372,137 @@ void PolyhedronWidget::paintEvent(QPaintEvent*)
             const int textureVIndex = face.indices.size() >= 4 ? face.indices[3] : face.indices[2];
             const V3 textureE2 = sub(vertices[textureVIndex].camera, textureA);
 
-            for (int k = 1; k + 1 < corners.size(); ++k) {
-                const Corner triangle[3] = {corners[0], corners[k], corners[k + 1]};
-                if (triangle[0].vertex->screen.x() < -1000.0
-                    || triangle[1].vertex->screen.x() < -1000.0
-                    || triangle[2].vertex->screen.x() < -1000.0) {
+            const int patchCount = corners.size() == 4 ? 1 : corners.size() - 2;
+
+            for (int patchIndex = 0; patchIndex < patchCount; ++patchIndex) {
+                Corner patch[4];
+
+                if (corners.size() == 4) {
+                    for (int i = 0; i < 4; ++i) {
+                        patch[i] = corners[i];
+                    }
+                } else {
+                    patch[0] = corners[0];
+                    patch[1] = corners[patchIndex + 1];
+                    patch[2] = corners[patchIndex + 2];
+                    patch[3] = corners[0];
+                }
+
+                bool patchValid = true;
+                for (int i = 0; i < 4; ++i) {
+                    if (patch[i].vertex->screen.x() < -1000.0) {
+                        patchValid = false;
+                        break;
+                    }
+                }
+                if (!patchValid) {
                     continue;
                 }
 
-                const double x0 = triangle[0].vertex->screen.x();
-                const double y0 = triangle[0].vertex->screen.y();
-                const double x1 = triangle[1].vertex->screen.x();
-                const double y1 = triangle[1].vertex->screen.y();
-                const double x2 = triangle[2].vertex->screen.x();
-                const double y2 = triangle[2].vertex->screen.y();
-                const double area = (x1 - x0) * (y2 - y0) - (y1 - y0) * (x2 - x0);
-                if (std::abs(area) < 1e-10) {
-                    continue;
-                }
+                const QPointF p0 = patch[0].vertex->screen;
+                const QPointF p1 = patch[1].vertex->screen;
+                const QPointF p2 = patch[2].vertex->screen;
+                const QPointF p3 = patch[3].vertex->screen;
 
-                const int minPixelX = qBound(0, static_cast<int>(std::floor(std::min({x0, x1, x2}))), renderWidth - 1);
-                const int maxPixelX = qBound(0, static_cast<int>(std::ceil(std::max({x0, x1, x2}))), renderWidth - 1);
-                const int minPixelY = qBound(0, static_cast<int>(std::floor(std::min({y0, y1, y2}))), renderHeight - 1);
-                const int maxPixelY = qBound(0, static_cast<int>(std::ceil(std::max({y0, y1, y2}))), renderHeight - 1);
+                const int minPixelX = qBound(
+                    0, static_cast<int>(std::floor(std::min(
+                        std::min(p0.x(), p1.x()), std::min(p2.x(), p3.x())))),
+                    renderWidth - 1);
+                const int maxPixelX = qBound(
+                    0, static_cast<int>(std::ceil(std::max(
+                        std::max(p0.x(), p1.x()), std::max(p2.x(), p3.x())))),
+                    renderWidth - 1);
+                const int minPixelY = qBound(
+                    0, static_cast<int>(std::floor(std::min(
+                        std::min(p0.y(), p1.y()), std::min(p2.y(), p3.y())))),
+                    renderHeight - 1);
+                const int maxPixelY = qBound(
+                    0, static_cast<int>(std::ceil(std::max(
+                        std::max(p0.y(), p1.y()), std::max(p2.y(), p3.y())))),
+                    renderHeight - 1);
 
                 for (int y = minPixelY; y <= maxPixelY; ++y) {
                     for (int x = minPixelX; x <= maxPixelX; ++x) {
                         const double px = x + 0.5;
                         const double py = y + 0.5;
-                        const double w0 = ((x1 - px) * (y2 - py) - (y1 - py) * (x2 - px)) / area;
-                        const double w1 = ((x2 - px) * (y0 - py) - (y2 - py) * (x0 - px)) / area;
-                        const double w2 = 1.0 - w0 - w1;
-                        if (w0 < 0.0 || w1 < 0.0 || w2 < 0.0) {
+
+                        double u = 0.0;
+                        double v = 0.0;
+                        if (!bilinearCoordinates(
+                                QPointF(px, py), p0, p1, p2, p3, u, v)) {
                             continue;
                         }
 
-                        const double z0 = triangle[0].vertex->camera.z;
-                        const double z1 = triangle[1].vertex->camera.z;
-                        const double z2 = triangle[2].vertex->camera.z;
-                        const double z = projectionType == ProjectionType::Perspective ? 1.0 / (w0 / z0 + w1 / z1 + w2 / z2) : (w0 * z0 + w1 * z1 + w2 * z2);
+                        double weights[4];
+                        bilinearWeights(u, v, weights);
+
+                        const double z0 = patch[0].vertex->camera.z;
+                        const double z1 = patch[1].vertex->camera.z;
+                        const double z2 = patch[2].vertex->camera.z;
+                        const double z3 = patch[3].vertex->camera.z;
+
+                        double wa = weights[0];
+                        double wb = weights[1];
+                        double wc = weights[2];
+                        double wd = weights[3];
+
+                        double z;
+                        if (projectionType == ProjectionType::Perspective) {
+                            wa /= z0;
+                            wb /= z1;
+                            wc /= z2;
+                            wd /= z3;
+
+                            const double weightSum = wa + wb + wc + wd;
+                            if (std::abs(weightSum) < 1e-12) {
+                                continue;
+                            }
+
+                            z = 1.0 / weightSum;
+                            wa /= weightSum;
+                            wb /= weightSum;
+                            wc /= weightSum;
+                            wd /= weightSum;
+                        } else {
+                            z = wa * z0 + wb * z1 + wc * z2 + wd * z3;
+                        }
+
                         const int pixelIndex = y * renderWidth + x;
                         if (zBufferEnabled && z >= zBuffer[pixelIndex]) {
                             continue;
                         }
 
-                        double wa = w0;
-                        double wb = w1;
-                        double wc = w2;
-                        if (projectionType == ProjectionType::Perspective) {
-                            wa /= z0;
-                            wb /= z1;
-                            wc /= z2;
-                            const double weightSum = wa + wb + wc;
-                            if (std::abs(weightSum) < 1e-12) {
-                                continue;
-                            }
-                            wa /= weightSum;
-                            wb /= weightSum;
-                            wc /= weightSum;
-                        }
-
                         const V3 worldPosition = add(
-                            add(mul(triangle[0].vertex->world, wa),
-                                mul(triangle[1].vertex->world, wb)),
-                            mul(triangle[2].vertex->world, wc));
+                            add(mul(patch[0].vertex->world, wa),
+                                mul(patch[1].vertex->world, wb)),
+                            add(mul(patch[2].vertex->world, wc),
+                                mul(patch[3].vertex->world, wd)));
 
                         V3 normal = add(
-                            add(mul(triangle[0].normal, wa),
-                                mul(triangle[1].normal, wb)),
-                            mul(triangle[2].normal, wc));
+                            add(mul(patch[0].normal, wa),
+                                mul(patch[1].normal, wb)),
+                            add(mul(patch[2].normal, wc),
+                                mul(patch[3].normal, wd)));
 
                         const QColor gouraudColor(
-                            channel(triangle[0].gouraudColor.red() * wa
-                                     + triangle[1].gouraudColor.red() * wb
-                                     + triangle[2].gouraudColor.red() * wc),
-                            channel(triangle[0].gouraudColor.green() * wa
-                                     + triangle[1].gouraudColor.green() * wb
-                                     + triangle[2].gouraudColor.green() * wc),
-                            channel(triangle[0].gouraudColor.blue() * wa
-                                     + triangle[1].gouraudColor.blue() * wb
-                                     + triangle[2].gouraudColor.blue() * wc));
+                            channel(patch[0].gouraudColor.red() * wa
+                                    + patch[1].gouraudColor.red() * wb
+                                    + patch[2].gouraudColor.red() * wc
+                                    + patch[3].gouraudColor.red() * wd),
+                            channel(patch[0].gouraudColor.green() * wa
+                                    + patch[1].gouraudColor.green() * wb
+                                    + patch[2].gouraudColor.green() * wc
+                                    + patch[3].gouraudColor.green() * wd),
+                            channel(patch[0].gouraudColor.blue() * wa
+                                    + patch[1].gouraudColor.blue() * wb
+                                    + patch[2].gouraudColor.blue() * wc
+                                    + patch[3].gouraudColor.blue() * wd));
 
                         const V3 cameraPositionAtPixel = add(
-                            add(mul(triangle[0].vertex->camera, wa),
-                                mul(triangle[1].vertex->camera, wb)),
-                            mul(triangle[2].vertex->camera, wc));
+                            add(mul(patch[0].vertex->camera, wa),
+                                mul(patch[1].vertex->camera, wb)),
+                            add(mul(patch[2].vertex->camera, wc),
+                                mul(patch[3].vertex->camera, wd)));
 
                         double textureU = 0.0;
                         double textureV = 0.0;
@@ -415,19 +520,23 @@ void PolyhedronWidget::paintEvent(QPaintEvent*)
                         }
 
                         QColor litColor;
-                        const V3 lightDirection = normalized(sub(toV3(lightPosition), worldPosition));
+                        const V3 lightDirection =
+                            normalized(sub(toV3(lightPosition), worldPosition));
+
                         if (shadingMode == GouraudLambert) {
                             litColor = gouraudColor;
                         } else {
                             normal = normalized(normal);
-                            litColor = toonDiffuseColor(objectColor, normal, lightDirection);
+                            litColor = toonDiffuseColor(
+                                objectColor, normal, lightDirection);
                         }
 
                         if (textureEnabled && !textureImage.isNull()
                             && textureCoordinatesValid) {
                             litColor = multiplyColors(
                                 litColor,
-                                sampleTextureNearest(textureImage, textureU, textureV));
+                                sampleTextureNearest(
+                                    textureImage, textureU, textureV));
                         }
 
                         if (zBufferEnabled) {
